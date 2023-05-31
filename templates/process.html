@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block content %}
+<section>
+    <h3>Upload</h3>
+    <form action="/process" method="post" enctype="multipart/form-data">
+        <div>
+            <label for="url">From url</label>
+            <input id="url" name="url" placeholder="Image url" />
+        </div>
+        <div>
+            <label for="file">From file</label>
+            <input id="file" name="file" placeholder="Image file" type="file" />
+        </div>
+        <button>Upload!</button>
+    </form>
+</section>
+<section>
+    <h3>Images</h3>
+    <ul>
+        {%- for image in images %}
+        <li>
+            <a href="{{ url_for('image_by_hash', image_hash=image[1]) }}">
+            {{ image[0] }}
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endblock %}

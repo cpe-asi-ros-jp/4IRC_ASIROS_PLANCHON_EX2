@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<div>
+    <h3>Live CAM</h3>
+    <form action="{{ url_for('live', fps=fps) }}" method="get">
+        <label for="fps">
+            FPS
+        </label>
+        <input id="fps" name="fps" placeholder="Max framerate de la vidéo" type="number" value="{{ fps }}" />
+        <button type="submit">Valider</button>
+    </form>
+    <center>
+        <img src="{{ url_for('video_feed', fps=fps) }}" width="50%">
+    </center>
+</div>
+{% endblock %}
