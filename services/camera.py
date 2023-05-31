@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-from cv2 import VideoCapture, imencode, IMWRITE_JPEG_QUALITY, CascadeClassifier, cvtColor, COLOR_RGB2GRAY, rectangle
+from cv2 import imencode, IMWRITE_JPEG_QUALITY, CascadeClassifier, cvtColor, COLOR_RGB2GRAY, rectangle, CAP_FFMPEG
 from imutils import resize
+from imutils.video import FileVideoStream
 from time import time
 
-VideoCapture = VideoCapture
+def get_video_capture(): 
+    return FileVideoStream(0).start()
 
 def video_generator(video, quality=95, width=400, fps=60):
     face_cascade = CascadeClassifier('haarcascade_frontalface_default.xml')
 
     prev = 0
-    while video.isOpened():
+    while video.more():
         time_elapsed = time() - prev
         if time_elapsed > 1.0 / fps:
             prev = time()
-            (_, frame) = video.read()
+            frame = video.read()
+            if frame is None: continue
             frame = resize(frame, width=width)
 
             gray = cvtColor(frame, COLOR_RGB2GRAY)

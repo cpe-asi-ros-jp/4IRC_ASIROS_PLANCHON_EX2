@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 from flask import Flask, Response, render_template, request, redirect, url_for
-from signal import signal, SIGINT
-from sys import exit
 from os import listdir
 from imghdr import what
 
-from services.camera import VideoCapture, video_generator
-from services.process import Process
+from services.camera import get_video_capture, video_generator
+from libraries.process import Process
 
 app = Flask(__name__)
 processor = Process()
-last_cam = None
 
 # Routes
 @app.route("/", methods=['GET'])
@@ -56,21 +53,12 @@ def image_by_hash(image_hash):
 
 @app.route("/video_feed.mjpg", methods=['GET'])
 def video_feed():
-    last_cam = VideoCapture(0)
     fps = request.args.get("fps", default=30, type=int)
     return Response(
-        video_generator(last_cam, fps=fps),
+        video_generator(get_video_capture(), fps=fps),
         mimetype='multipart/x-mixed-replace; boundary=frame'
     )
 
 # Initializer
-def on_sigint(sig, frame):
-    if last_cam != None: last_cam.release()
-    exit(0)
-
-def main():
-    signal(SIGINT, on_sigint)
-    app.run(host="127.0.0.1", port=4242, debug=True)
-
 if __name__=="__main__":
-    main()
+    app.run(host="127.0.0.1", port=4242, debug=True, threaded=True)
