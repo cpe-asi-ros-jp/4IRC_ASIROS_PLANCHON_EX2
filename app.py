@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-from flask import Flask, Response, render_template, request, redirect, url_for
+from flask import Flask, Response, render_template, request, redirect, url_for, current_app
 from os import listdir
 from imghdr import what
 
-from services.camera import get_video_capture, video_generator
+from libraries.camera import video_generator
 from libraries.process import Process
 
 app = Flask(__name__)
@@ -55,10 +55,10 @@ def image_by_hash(image_hash):
 def video_feed():
     fps = request.args.get("fps", default=30, type=int)
     return Response(
-        video_generator(get_video_capture(), fps=fps),
+        video_generator(fps=fps),
         mimetype='multipart/x-mixed-replace; boundary=frame'
     )
 
 # Initializer
 if __name__=="__main__":
-    app.run(host="127.0.0.1", port=4242, debug=True, threaded=True)
+    app.run(host="127.0.0.1", port=4242, threaded=True)

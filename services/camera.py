@@ -1,32 +1,96 @@
 #!/usr/bin/env python3
-from cv2 import imencode, IMWRITE_JPEG_QUALITY, CascadeClassifier, cvtColor, COLOR_RGB2GRAY, rectangle, CAP_FFMPEG
-from imutils import resize
 from imutils.video import FileVideoStream
-from time import time
+from cv2 import imencode
+from signal import signal, SIGINT
+from websockets.sync.server import serve
+from websockets.exceptions import ConnectionClosed
+from functools import partial
+from uuid import uuid4
+from threading import Lock, Thread, Condition
+from queue import Queue, Empty
 
-def get_video_capture(): 
-    return FileVideoStream(0).start()
+def fprint(msg):
+    print(msg, flush=True)
 
-def video_generator(video, quality=95, width=400, fps=60):
-    face_cascade = CascadeClassifier('haarcascade_frontalface_default.xml')
+def is_running(stop_cond):
+    is_stopped = stop_cond.acquire(blocking=False)
+    if is_stopped:
+        stop_cond.release()
+    return not is_stopped
 
-    prev = 0
+def get_noblock(queue):
+    try:
+        return queue.get_nowait()
+    except Empty:
+        return None
+
+def video_worker(clients_queue, frames_queue, stop_cond, cam = 0):
+    video = FileVideoStream(cam).start()
+    clients = []
+    fprint("started video worker")
+
     while video.more():
-        time_elapsed = time() - prev
-        if time_elapsed > 1.0 / fps:
-            prev = time()
-            frame = video.read()
-            if frame is None: continue
-            frame = resize(frame, width=width)
+        if not is_running(stop_cond):
+            video.stop()
+            break
 
-            gray = cvtColor(frame, COLOR_RGB2GRAY)
-            faces = face_cascade.detectMultiScale(gray, 1.3, 5)
-            for (x,y,w,h) in faces:
-                # To draw a rectangle in a face 
-                rectangle(frame,(x,y),(x+w,y+h),(219,112,147),2) 
+        while (id := get_noblock(clients_queue)) is not None:
+            if id in clients:
+                clients.remove(id)
+                fprint("removed client %s" % id)
+            else:    
+                clients.append(id)
+                fprint("added new client %s" % id)
+            clients_queue.task_done()
 
-            (_, buffer) = imencode(".jpg", frame, [IMWRITE_JPEG_QUALITY, quality])
-            yield (b'--frame\r\n' +
-                b'Content-Type: image/jpeg\r\n\r\n' +
-                bytes(buffer) +
-                b'\r\n')
+        frame = video.read()
+        if frame is None: continue
+        else:
+            for client in clients:
+                frames_queue.put((client, frame))
+        
+    fprint("stopped video worker")
+
+def video_subscriber(websocket, clients_queue, frames_queue, stop_cond):
+    id = uuid4()
+    clients_queue.put(id)
+
+    fprint("opened connection")
+    while is_running(stop_cond):
+        if (f := get_noblock(frames_queue)) is not None:
+            if f[0] != id:
+                frames_queue.put(f)
+                frames_queue.task_done()
+
+            else:
+                frames_queue.task_done()
+                (_, buffer) = imencode(".jpg", f[1])
+                try:
+                    websocket.send(bytes(buffer))
+                except ConnectionClosed:
+                    break
+    websocket.close()
+    clients_queue.put(id)
+    fprint("closed connection")
+    
+
+def main(stop_cond):
+    clients_queue = Queue()
+    frames_queue = Queue()
+    with serve(partial(video_subscriber, clients_queue=clients_queue, frames_queue=frames_queue, stop_cond=stop_cond), "127.0.0.1", 6969) as server:
+        vw_handle = Thread(target=video_worker, args=(clients_queue, frames_queue, stop_cond), daemon=True)
+        vw_handle.start()
+
+        def on_signint(sig, frame):
+            stop_cond.release()
+            server.shutdown()
+        signal(SIGINT, on_signint)
+
+        server.serve_forever()
+        vw_handle.join()
+
+if __name__ == '__main__':
+    stop_cond = Condition(lock=Lock())
+    stop_cond.acquire()
+
+    main(stop_cond)
